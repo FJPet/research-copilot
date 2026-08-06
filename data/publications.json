@@ -1,0 +1,114 @@
+[
+  {
+    "source": "Zombie_ML.pdf",
+    "title": "Are You a Zombie? An Early Warning Tool Based on Machine Learning Methods to Identify Zombie Firms",
+    "year": 2025,
+    "journal": null,
+    "publication_type": "Working paper"
+  },
+  {
+    "source": "Implied_Volatility.pdf",
+    "title": "Implementing Intraday Model-Free Implied Volatility for Individual Equities to Analyze the Return–Volatility Relationship",
+    "year": 2024,
+    "journal": "Journal of Risk and Financial Management",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "CNN_HAR.pdf",
+    "title": "The Best of Both Worlds? Predicting Realized Volatility Based on Convolutional Neural Nets and Coloured Intraday Return Images",
+    "year": 2026,
+    "journal": null,
+    "publication_type": "Working paper"
+  },
+  {
+    "source": "Predicting_Millionaires.pdf",
+    "title": "Predicting Millionaires from Ethereum Transaction Histories Using Node Embeddings and Artificial Neural Nets",
+    "year": 2023,
+    "journal": "Expert Systems with Applications",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Zombie_Interest.pdf",
+    "title": "When Companies Don't Die: Analyzing Zombie Firms in a Low Interest Rate Environment",
+    "year": 2023,
+    "journal": "Aussenwirtschaft",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "comovement.pdf",
+    "title": "Measuring 25 Years of Global Equity Market Co-Movement Using a Time-Varying Spatial Model",
+    "year": 2022,
+    "journal": "Journal of International Money and Finance",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Price discovery across cryptocurrency.pdf",
+    "title": "Nothing but Noise? Price Discovery Across Cryptocurrency Markets",
+    "year": 2021,
+    "journal": "Journal of Financial Markets",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Wikipedia_Searches.pdf",
+    "title": "An Encyclopedia for Stock Markets? Wikipedia Searches and Stock Returns",
+    "year": 2020,
+    "journal": "International Review of Financial Analysis",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Fama_French.pdf",
+    "title": "The Fama-French Five-Factor Model Plus Momentum: Evidence for the German Market",
+    "year": 2020,
+    "journal": "Schmalenbach Business Review",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "R_Transfer_Entropy_Package.pdf",
+    "title": "RTransferEntropy: Quantifying Information Flow Between Different Time Series Using Effective Transfer Entropy",
+    "year": 2019,
+    "journal": "SoftwareX",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Group_Transfer_Entropy_Crypto.pdf",
+    "title": "Group Transfer Entropy with an Application to Cryptocurrencies",
+    "year": 2019,
+    "journal": "Physica A: Statistical Mechanics and its Applications",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Group_Transfer_Entropy_Vola.pdf",
+    "title": "Analyzing Volatility Transmission Using Transfer Entropy",
+    "year": 2018,
+    "journal": "Energy Economics",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Price_Discovery_Markov.pdf",
+    "title": "Price Discovery in the Markets for Credit Risk: A Markov-Switching Approach",
+    "year": 2016,
+    "journal": "Studies in Nonlinear Dynamics and Econometrics",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Transfer_Entropy.pdf",
+    "title": "Using Transfer Entropy to Measure Information Flows Between Financial Markets",
+    "year": 2013,
+    "journal": "Studies in Nonlinear Dynamics and Econometrics",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Intensity_Info_Shares.pdf",
+    "title": "Who Moves First? An Intensity-Based Measure for Information Flows Across Stock Exchanges",
+    "year": 2013,
+    "journal": "Journal of Banking and Finance",
+    "publication_type": "Journal article"
+  },
+  {
+    "source": "Unique_Info_Shares.pdf",
+    "title": "Telltale Tails: A New Approach to Estimating Unique Market Information Shares",
+    "year": 2013,
+    "journal": "Journal of Financial and Quantitative Analysis",
+    "publication_type": "Journal article"
+  }
+]
