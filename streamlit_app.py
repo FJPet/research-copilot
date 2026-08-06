@@ -1,47 +1,109 @@
+import json
+from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
+import numpy as np
 import streamlit as st
+from ollama import Client
+from sentence_transformers import SentenceTransformer
 
-from src.embeddings import load_embedding_model
-from src.llm import generate_answer
 from src.metadata import load_publications
-from src.vector_store import (
-    get_collection_size,
-    search_all_papers,
-    search_paper,
-)
+
+
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
+OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_HOST = "http://localhost:11434"
+
+INDEX_FOLDER = Path("search_index")
+EMBEDDINGS_PATH = INDEX_FOLDER / "embeddings.npy"
+CHUNKS_PATH = INDEX_FOLDER / "chunks.json"
 
 
 st.set_page_config(
-    page_title="Chat with my Papers",
+    page_title="Research Copilot",
     page_icon="📚",
     layout="wide",
 )
 
 
 @st.cache_resource
-def get_embedding_model():
+def load_embedding_model() -> SentenceTransformer:
     """
     Load the local embedding model once.
     """
 
-    return load_embedding_model()
+    return SentenceTransformer(MODEL_NAME)
+
+
+@st.cache_resource
+def load_search_index() -> tuple[
+    np.ndarray,
+    list[dict[str, Any]],
+]:
+    """
+    Load the precomputed document embeddings and chunks.
+    """
+
+    if not EMBEDDINGS_PATH.exists():
+        raise FileNotFoundError(
+            "The precomputed embedding index is missing."
+        )
+
+    if not CHUNKS_PATH.exists():
+        raise FileNotFoundError(
+            "The chunk metadata file is missing."
+        )
+
+    embeddings = np.load(
+        EMBEDDINGS_PATH,
+    )
+
+    chunks = json.loads(
+        CHUNKS_PATH.read_text(
+            encoding="utf-8",
+        )
+    )
+
+    if len(embeddings) != len(chunks):
+        raise ValueError(
+            "The numbers of embeddings and chunks do not match."
+        )
+
+    return embeddings, chunks
 
 
 @st.cache_data
 def get_publications() -> list[dict[str, Any]]:
     """
-    Load publication metadata once.
+    Load structured publication metadata.
     """
 
     return load_publications()
+
+
+def ollama_is_available() -> bool:
+    """
+    Check whether the local Ollama server is running.
+    """
+
+    try:
+        with urlopen(
+            f"{OLLAMA_HOST}/api/tags",
+            timeout=1,
+        ):
+            return True
+
+    except (URLError, TimeoutError, OSError):
+        return False
 
 
 def create_title_mapping(
     publications: list[dict[str, Any]],
 ) -> dict[str, str]:
     """
-    Map displayed publication titles to PDF filenames.
+    Map display titles to PDF filenames.
     """
 
     return {
@@ -53,79 +115,190 @@ def create_title_mapping(
     }
 
 
-def format_passages_for_llm(
-    passages: list[dict[str, Any]],
+def semantic_search(
+    query: str,
+    model: SentenceTransformer,
+    embeddings: np.ndarray,
+    chunks: list[dict[str, Any]],
+    number_of_results: int = 10,
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Keep only the fields required by the LLM.
+    Search the precomputed embedding index.
     """
 
-    return [
-        {
-            "source": passage["source"],
-            "page": passage["page"],
-            "chunk": passage["chunk"],
-            "distance": passage["distance"],
-            "text": passage["text"],
-        }
-        for passage in passages
-    ]
+    query_embedding = model.encode(
+        query,
+        normalize_embeddings=True,
+    ).astype("float32")
+
+    similarities = embeddings @ query_embedding
+
+    candidate_indices = np.argsort(
+        similarities
+    )[::-1]
+
+    results: list[dict[str, Any]] = []
+
+    for index in candidate_indices:
+        chunk = chunks[int(index)]
+
+        if source is not None:
+            if chunk["source"] != source:
+                continue
+
+        results.append(
+            {
+                "source": chunk["source"],
+                "page": chunk["page"],
+                "chunk": chunk["chunk"],
+                "text": chunk["text"],
+                "similarity": float(
+                    similarities[index]
+                ),
+            }
+        )
+
+        if len(results) >= number_of_results:
+            break
+
+    return results
 
 
 def retrieve_paper_overview(
     source: str,
-    model,
+    model: SentenceTransformer,
+    embeddings: np.ndarray,
+    chunks: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """
-    Retrieve passages covering the main parts of one paper.
+    Retrieve passages covering several dimensions of one paper.
     """
 
     queries = [
-        "What is the research question, purpose, and contribution of this paper?",
-        "Which methods and models are actually used by the authors?",
-        "Which data and sample are used in the empirical analysis?",
-        "What are the main empirical findings and conclusions?",
+        "research question motivation and contribution",
+        "data sample and empirical setting used by the authors",
+        "methods models and estimation actually used by the authors",
+        "main empirical findings results and conclusion",
     ]
 
-    unique_passages: dict[
+    unique_results: dict[
         tuple[str, int, int],
         dict[str, Any],
     ] = {}
 
     for query in queries:
-        passages = search_paper(
+        results = semantic_search(
             query=query,
-            source=source,
             model=model,
+            embeddings=embeddings,
+            chunks=chunks,
             number_of_results=3,
+            source=source,
         )
 
-        for passage in passages:
+        for result in results:
             identifier = (
-                passage["source"],
-                passage["page"],
-                passage["chunk"],
+                result["source"],
+                result["page"],
+                result["chunk"],
             )
 
-            unique_passages[identifier] = passage
+            unique_results[identifier] = result
 
     return sorted(
-        unique_passages.values(),
-        key=lambda passage: (
-            passage["page"],
-            passage["chunk"],
+        unique_results.values(),
+        key=lambda result: (
+            result["page"],
+            result["chunk"],
         ),
     )
 
 
-def display_sources(
+def format_context(
     passages: list[dict[str, Any]],
-) -> None:
+) -> str:
     """
-    Display supporting passages with paper and page information.
+    Format retrieved passages for the local language model.
     """
 
-    st.markdown("### Sources")
+    blocks: list[str] = []
+
+    for passage in passages:
+        blocks.append(
+            "\n".join(
+                [
+                    f"Paper: {passage['source']}",
+                    f"Page: {passage['page']}",
+                    f"Passage: {passage['text']}",
+                ]
+            )
+        )
+
+    return "\n\n---\n\n".join(blocks)
+
+
+def generate_local_answer(
+    instruction: str,
+    passages: list[dict[str, Any]],
+) -> str:
+    """
+    Generate a grounded answer using local Qwen through Ollama.
+    """
+
+    context = format_context(passages)
+
+    system_prompt = """
+You are an assistant for exploring scientific publications.
+
+Use only the supplied paper passages.
+
+Rules:
+- Do not invent facts.
+- Do not attribute methods from cited literature to the focal paper.
+- Report methods only when the passages indicate that the authors
+  actually use, estimate, train, implement, or compare them.
+- Mention uncertainty when the evidence is incomplete.
+- Keep different papers clearly separated in comparisons.
+- Write clearly for a technically informed reader.
+"""
+
+    client = Client(
+        host=OLLAMA_HOST,
+    )
+
+    response = client.chat(
+        model=OLLAMA_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"{instruction}\n\n"
+                    f"Retrieved passages:\n{context}"
+                ),
+            },
+        ],
+        options={
+            "temperature": 0.0,
+        },
+    )
+
+    return response["message"]["content"]
+
+
+def display_sources(
+    passages: list[dict[str, Any]],
+    heading: str = "Sources",
+) -> None:
+    """
+    Show retrieved passages transparently.
+    """
+
+    st.markdown(f"### {heading}")
 
     for rank, passage in enumerate(
         passages,
@@ -136,29 +309,38 @@ def display_sources(
             f"— page {passage['page']}"
         )
 
-        with st.expander(label):
+        with st.expander(
+            label,
+            expanded=(rank <= 2),
+        ):
             st.caption(
                 f"Chunk {passage['chunk']} · "
-                f"Cosine distance: "
-                f"{passage['distance']:.4f}"
+                f"Cosine similarity: "
+                f"{passage['similarity']:.4f}"
             )
 
-            st.write(passage["text"])
+            st.write(
+                passage["text"]
+            )
 
 
 def show_home(
     publications: list[dict[str, Any]],
-    stored_chunks: int,
+    number_of_chunks: int,
+    local_llm_available: bool,
 ) -> None:
     """
-    Display the landing page.
+    Display the project landing page.
     """
 
-    st.title("📚 Chat with my Papers")
+    st.title("📚 Research Copilot")
 
-    st.subheader(
-        "Explore my scientific publications "
-        "using semantic search and a local language model."
+    st.subheader("Chat with my Papers")
+
+    st.write(
+        "Explore my scientific publications using structured "
+        "metadata, semantic search, and—when run locally—a "
+        "local language model."
     )
 
     journal_articles = sum(
@@ -192,27 +374,41 @@ def show_home(
 
     st.markdown("---")
 
+    if local_llm_available:
+        st.success(
+            "Full local mode: semantic search, summaries, "
+            "and comparisons are available."
+        )
+    else:
+        st.info(
+            "Public demo mode: publication browsing and semantic "
+            "search are available. AI summaries and comparisons "
+            "require the local Ollama version."
+        )
+
     st.markdown(
         """
-        ### What you can do
+        ### Features
 
         **Browse publications**  
-        View titles, publication years, journals, and publication types.
+        Explore titles, years, journals, and publication types.
+
+        **Semantic search**  
+        Find passages on topics, methods, datasets, and findings.
 
         **Summarize a paper**  
-        Select one paper and generate a grounded summary from its text.
+        Available locally when Qwen is running through Ollama.
 
-        **Compare two papers**  
-        Compare their research questions, methods, data, and findings.
+        **Compare papers**  
+        Available locally when Qwen is running through Ollama.
 
-        **Search the collection**  
-        Find semantically relevant passages across all publications.
+        **Transparent evidence**  
+        Search results and generated answers include paper and page references.
         """
     )
 
     st.caption(
-        f"The local vector database currently contains "
-        f"{stored_chunks} text chunks."
+        f"Search index: {number_of_chunks} text chunks"
     )
 
 
@@ -225,8 +421,8 @@ def show_publications(
 
     st.header("📚 Publications")
 
-    publication_type = st.selectbox(
-        "Filter by publication type",
+    selected_type = st.selectbox(
+        "Publication type",
         [
             "All publications",
             "Journal articles",
@@ -236,7 +432,7 @@ def show_publications(
 
     filtered = publications
 
-    if publication_type == "Journal articles":
+    if selected_type == "Journal articles":
         filtered = [
             publication
             for publication in publications
@@ -244,7 +440,7 @@ def show_publications(
             == "Journal article"
         ]
 
-    elif publication_type == "Working papers":
+    elif selected_type == "Working papers":
         filtered = [
             publication
             for publication in publications
@@ -266,13 +462,9 @@ def show_publications(
                 f"**Year:** {publication['year']}"
             )
 
-            journal = (
-                publication["journal"]
-                or "Not yet published"
-            )
-
             col2.write(
-                f"**Journal:** {journal}"
+                f"**Journal:** "
+                f"{publication['journal'] or 'Not yet published'}"
             )
 
             col3.write(
@@ -281,15 +473,89 @@ def show_publications(
             )
 
 
-def show_summary(
-    publications: list[dict[str, Any]],
-    model,
+def show_search(
+    model: SentenceTransformer,
+    embeddings: np.ndarray,
+    chunks: list[dict[str, Any]],
 ) -> None:
     """
-    Generate a summary of one selected paper.
+    Display public semantic search.
+    """
+
+    st.header("🔍 Search the Papers")
+
+    st.write(
+        "Search for research topics, methods, datasets, "
+        "markets, or empirical findings."
+    )
+
+    st.caption(
+        "Examples: transfer entropy · volatility forecasting · "
+        "machine learning · cryptocurrency price discovery · zombie firms"
+    )
+
+    query = st.text_input(
+        "Search query",
+        placeholder=(
+            "For example: Which passages discuss "
+            "volatility transmission?"
+        ),
+    )
+
+    number_of_results = st.slider(
+        "Number of passages",
+        min_value=5,
+        max_value=20,
+        value=10,
+    )
+
+    if st.button(
+        "Search",
+        type="primary",
+    ):
+        if not query.strip():
+            st.warning(
+                "Please enter a search query."
+            )
+            return
+
+        with st.spinner(
+            "Searching the publication collection..."
+        ):
+            results = semantic_search(
+                query=query,
+                model=model,
+                embeddings=embeddings,
+                chunks=chunks,
+                number_of_results=number_of_results,
+            )
+
+        st.markdown("## Results")
+        display_sources(
+            results,
+            heading="Retrieved passages",
+        )
+
+
+def show_summary(
+    publications: list[dict[str, Any]],
+    model: SentenceTransformer,
+    embeddings: np.ndarray,
+    chunks: list[dict[str, Any]],
+    local_llm_available: bool,
+) -> None:
+    """
+    Display the local summary workflow.
     """
 
     st.header("📝 Summarize a Paper")
+
+    if not local_llm_available:
+        st.warning(
+            "Summaries require the local version with Ollama "
+            f"and {OLLAMA_MODEL} running."
+        )
+        return
 
     title_mapping = create_title_mapping(
         publications
@@ -307,38 +573,34 @@ def show_summary(
         type="primary",
     ):
         with st.spinner(
-            "Retrieving relevant sections..."
+            "Retrieving relevant passages..."
         ):
             passages = retrieve_paper_overview(
                 source=source,
                 model=model,
+                embeddings=embeddings,
+                chunks=chunks,
             )
 
-        question = """
-Summarize this paper using the supplied passages.
-
-Structure the answer under these headings:
+        instruction = """
+Summarize the selected paper under these headings:
 
 1. Research question and motivation
-2. Data
+2. Data and empirical setting
 3. Methods actually used by the authors
 4. Main findings
 5. Contribution
 
-Do not report methods that appear only in cited literature.
-If one category is not supported by the passages, state that briefly.
+Do not report methods that occur only in the literature review.
+If a category is not supported, state that briefly.
 """
 
         with st.spinner(
             "Generating the summary locally..."
         ):
-            answer = generate_answer(
-                question=question,
-                retrieved_passages=(
-                    format_passages_for_llm(
-                        passages
-                    )
-                ),
+            answer = generate_local_answer(
+                instruction=instruction,
+                passages=passages,
             )
 
         st.markdown("## Summary")
@@ -349,19 +611,31 @@ If one category is not supported by the passages, state that briefly.
 
 def show_comparison(
     publications: list[dict[str, Any]],
-    model,
+    model: SentenceTransformer,
+    embeddings: np.ndarray,
+    chunks: list[dict[str, Any]],
+    local_llm_available: bool,
 ) -> None:
     """
-    Compare two selected papers.
+    Display the local paper-comparison workflow.
     """
 
     st.header("⚖️ Compare Papers")
+
+    if not local_llm_available:
+        st.warning(
+            "Comparisons require the local version with Ollama "
+            f"and {OLLAMA_MODEL} running."
+        )
+        return
 
     title_mapping = create_title_mapping(
         publications
     )
 
-    titles = list(title_mapping.keys())
+    titles = list(
+        title_mapping.keys()
+    )
 
     col1, col2 = st.columns(2)
 
@@ -389,29 +663,21 @@ def show_comparison(
             )
             return
 
-        first_source = title_mapping[
-            first_title
-        ]
-
-        second_source = title_mapping[
-            second_title
-        ]
-
         with st.spinner(
             "Retrieving both papers..."
         ):
-            first_passages = (
-                retrieve_paper_overview(
-                    source=first_source,
-                    model=model,
-                )
+            first_passages = retrieve_paper_overview(
+                source=title_mapping[first_title],
+                model=model,
+                embeddings=embeddings,
+                chunks=chunks,
             )
 
-            second_passages = (
-                retrieve_paper_overview(
-                    source=second_source,
-                    model=model,
-                )
+            second_passages = retrieve_paper_overview(
+                source=title_mapping[second_title],
+                model=model,
+                embeddings=embeddings,
+                chunks=chunks,
             )
 
             passages = (
@@ -419,32 +685,26 @@ def show_comparison(
                 + second_passages
             )
 
-        question = """
-Compare the two papers represented in the supplied passages.
-
-Use these headings:
+        instruction = """
+Compare the two selected papers under these headings:
 
 1. Research questions
-2. Data and empirical setting
+2. Data and empirical settings
 3. Methods actually used
 4. Main findings
 5. Similarities
 6. Differences
 
-Keep the two papers clearly separated.
-Do not attribute methods from cited literature to either paper.
+Keep the papers clearly separated.
+Do not attribute cited methods to the focal papers.
 """
 
         with st.spinner(
             "Generating the comparison locally..."
         ):
-            answer = generate_answer(
-                question=question,
-                retrieved_passages=(
-                    format_passages_for_llm(
-                        passages
-                    )
-                ),
+            answer = generate_local_answer(
+                instruction=instruction,
+                passages=passages,
             )
 
         st.markdown("## Comparison")
@@ -453,164 +713,143 @@ Do not attribute methods from cited literature to either paper.
         display_sources(passages)
 
 
-def show_search(model) -> None:
+def show_about(
+    local_llm_available: bool,
+) -> None:
     """
-    Run transparent semantic search across all papers.
-    """
-
-    st.header("🔍 Search Papers")
-
-    st.write(
-        "Search for concepts, methods, datasets, "
-        "topics, or findings across the collection."
-    )
-
-    query = st.text_input(
-        "Search query",
-        placeholder=(
-            "For example: transfer entropy, "
-            "volatility forecasting, zombie firms..."
-        ),
-    )
-
-    number_of_results = st.slider(
-        "Passages per paper",
-        min_value=1,
-        max_value=3,
-        value=1,
-    )
-
-    if st.button(
-        "Search collection",
-        type="primary",
-    ):
-        if not query.strip():
-            st.warning(
-                "Please enter a search query."
-            )
-            return
-
-        with st.spinner(
-            "Searching the publication collection..."
-        ):
-            passages = search_all_papers(
-                query=query,
-                model=model,
-                passages_per_paper=(
-                    number_of_results
-                ),
-            )
-
-        passages = sorted(
-            passages,
-            key=lambda passage: (
-                passage["distance"]
-            ),
-        )
-
-        st.markdown(
-            f"## Most relevant passages"
-        )
-
-        display_sources(
-            passages[:20]
-        )
-
-
-def show_about() -> None:
-    """
-    Explain the technical architecture.
+    Explain the public and full local versions.
     """
 
     st.header("ℹ️ About")
 
     st.markdown(
         """
-        **Chat with my Papers** is a local
-        Retrieval-Augmented Generation application
-        for exploring a collection of scientific papers.
+        **Research Copilot — Chat with my Papers** is a portfolio
+        project for exploring a collection of scientific publications.
 
-        ### Technical pipeline
+        ### Public mode
 
-        1. PDFs are read with **PyMuPDF**
-        2. Extracted text is cleaned and split into overlapping chunks
-        3. **BGE Small** creates local Transformer embeddings
-        4. **ChromaDB** stores and retrieves the embedding vectors
-        5. **Qwen 2.5 7B**, running through Ollama, generates summaries
-           and comparisons from retrieved evidence
-        6. **Streamlit** provides the interactive interface
+        - structured publication metadata;
+        - precomputed document embeddings;
+        - semantic search using cosine similarity;
+        - transparent paper and page references.
 
-        All embeddings and language-model inference run locally.
-        No paid API service is required.
+        ### Full local mode
+
+        - all public-mode features;
+        - local Qwen summaries;
+        - two-paper comparisons;
+        - no paid AI API.
+
+        ### Technology
+
+        - Python
+        - PyMuPDF
+        - Sentence Transformers
+        - BAAI/bge-small-en-v1.5
+        - NumPy
+        - Ollama and Qwen 2.5 7B
+        - Streamlit
         """
+    )
+
+    if local_llm_available:
+        st.success(
+            "Ollama detected: full local features are enabled."
+        )
+    else:
+        st.info(
+            "Ollama was not detected: the app is running "
+            "in public demo mode."
+        )
+
+    st.warning(
+        "Work in progress: planned additions include intelligent "
+        "question routing, structured method and dataset profiles, "
+        "formula-aware processing, and a research knowledge graph."
     )
 
 
 def main() -> None:
     publications = get_publications()
-    stored_chunks = get_collection_size()
 
-    if stored_chunks == 0:
-        st.error(
-            "The vector database is empty."
+    try:
+        embeddings, chunks = load_search_index()
+
+    except (FileNotFoundError, ValueError) as error:
+        st.error(str(error))
+
+        st.write(
+            "Build the search index locally with:"
         )
 
-        st.info(
-            "Index the papers before starting "
-            "the application."
+        st.code(
+            "python build_search_index.py"
         )
         return
 
-    model = get_embedding_model()
+    model = load_embedding_model()
+    local_llm_available = ollama_is_available()
 
     (
-        tab_home,
-        tab_publications,
-        tab_summary,
-        tab_comparison,
-        tab_search,
-        tab_about,
+        home_tab,
+        publications_tab,
+        search_tab,
+        summary_tab,
+        comparison_tab,
+        about_tab,
     ) = st.tabs(
         [
             "Home",
             "Publications",
+            "Search",
             "Summarize",
             "Compare",
-            "Search",
             "About",
         ]
     )
 
-    with tab_home:
+    with home_tab:
         show_home(
             publications=publications,
-            stored_chunks=stored_chunks,
+            number_of_chunks=len(chunks),
+            local_llm_available=local_llm_available,
         )
 
-    with tab_publications:
+    with publications_tab:
         show_publications(
             publications=publications,
         )
 
-    with tab_summary:
+    with search_tab:
+        show_search(
+            model=model,
+            embeddings=embeddings,
+            chunks=chunks,
+        )
+
+    with summary_tab:
         show_summary(
             publications=publications,
             model=model,
+            embeddings=embeddings,
+            chunks=chunks,
+            local_llm_available=local_llm_available,
         )
 
-    with tab_comparison:
+    with comparison_tab:
         show_comparison(
             publications=publications,
             model=model,
+            embeddings=embeddings,
+            chunks=chunks,
+            local_llm_available=local_llm_available,
         )
 
-    with tab_search:
-        show_search(
-            model=model,
+    with about_tab:
+        show_about(
+            local_llm_available=local_llm_available,
         )
-
-    with tab_about:
-        show_about()
 
 
 if __name__ == "__main__":
