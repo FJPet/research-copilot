@@ -12,7 +12,7 @@ Explore my scientific publications using structured metadata, semantic search, R
 
 A public Streamlit demo is planned for:
 
-`https://research-copilot.streamlit.app`
+`https://research-copilot-rxtnzmc8abdfjvan38nnvo.streamlit.app/`
 
 The public version supports:
 
