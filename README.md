@@ -1,32 +1,20 @@
-# 📚 Research Copilot
+# Research Copilot
 
 **Chat with my Papers**
 
-Explore my scientific publications using structured metadata, semantic search, Retrieval-Augmented Generation, and local language models.
+Explore my scientific publications using structured metadata, semantic search, Retrieval-Augmented Generation (RAG), and local language models.
 
-> 🚧 **Work in progress:** The current version provides a deployable semantic-search interface and an extended local mode with AI-generated summaries and paper comparisons.
+**Live Demo:**  
+[Research Copilot](https://research-copilot-rxtnzmc8abdfjvan38nnvo.streamlit.app/)
+
+**Source Code:**  
+[GitHub Repository](https://github.com/FJPet/research-copilot)
 
 ---
 
-## Live Demo
-
-A public Streamlit demo is planned for:
-
-`https://research-copilot-rxtnzmc8abdfjvan38nnvo.streamlit.app/`
-
-The public version supports:
-
-- browsing the publication catalogue;
-- searching semantically across the complete paper collection;
-- inspecting relevant passages with paper and page references.
-
-The full local version additionally supports:
-
-- structured summaries of individual papers;
-- comparisons between two selected papers;
-- local answer generation with Qwen through Ollama.
-
-No paid AI API is required.
+> **Work in Progress**
+>
+> Research Copilot is under active development. The current version provides a deployable semantic-search interface together with an extended local mode supporting AI-generated paper summaries and comparisons using Ollama and Qwen 2.5.
 
 ---
 
@@ -34,166 +22,155 @@ No paid AI API is required.
 
 Scientific publications contain detailed information about research questions, data, methods, and findings, but reading an entire publication portfolio takes time.
 
-Research Copilot provides an accessible way to explore my scientific work. It also serves as a practical AI-engineering project combining scientific document processing, Transformer embeddings, semantic retrieval, structured metadata, and local language-model inference.
+Research Copilot provides an interactive way to explore my scientific work. At the same time, it serves as a practical AI engineering project combining scientific document processing, Transformer embeddings, semantic retrieval, structured metadata, and local language models.
 
 The application deliberately separates reliable structured information from generative AI:
 
 - publication titles, years, journals, and publication types come from curated metadata;
 - semantic search retrieves relevant passages directly from the papers;
-- local language-model generation is used only for controlled workflows such as single-paper summaries and two-paper comparisons.
+- local language-model generation is used only for controlled workflows such as single-paper summaries and paper comparisons.
 
 ---
 
 ## Features
 
-###  Publication catalogue
+### Publication Catalogue
 
-Browse the publications by:
+Browse the publication portfolio by:
 
 - title;
 - publication year;
 - journal;
 - publication type.
 
-This information is stored in a structured JSON file and does not depend on language-model inference.
+Publication metadata are stored in a structured JSON file rather than inferred by a language model.
 
-###  Semantic search
+### Semantic Search
 
-Search across the complete publication collection for:
+Search across the complete paper collection for:
 
 - research topics;
 - statistical and machine-learning methods;
-- datasets and empirical settings;
-- financial markets and asset classes;
-- findings and conclusions.
+- datasets;
+- empirical findings;
+- financial markets;
+- asset classes.
 
-Each result includes:
+Each result displays:
 
-- the PDF filename;
+- paper title;
 - page number;
-- chunk number;
-- cosine similarity;
-- the original supporting passage.
+- similarity score;
+- supporting passage.
 
-###  Paper summaries — local mode
+### Paper Summaries (Local Mode)
 
-Select one paper and generate a structured summary covering:
+Generate structured summaries covering:
 
-1. research question and motivation;
+1. research question;
 2. data and empirical setting;
-3. methods actually used by the authors;
+3. methods actually used;
 4. main findings;
 5. contribution.
 
-###  Paper comparisons — local mode
+### Paper Comparisons (Local Mode)
 
-Select two papers and compare their:
+Compare two selected papers with respect to:
 
-- research questions;
-- datasets and empirical settings;
-- methods;
+- research question;
+- datasets;
+- methodology;
 - findings;
 - similarities;
 - differences.
 
-###  Transparent evidence
+### Transparent Evidence
 
-Retrieved passages remain visible beneath search results and generated responses. This makes it possible to inspect the evidence and identify the original paper and page.
+Every generated answer is grounded in retrieved passages that remain visible to the user.
 
 ---
 
 ## Public and Local Modes
 
-The same Streamlit application supports two operating modes.
+The application supports two execution modes.
 
-### Public demo mode
+### Public Demo
 
-When Ollama is unavailable, the app automatically provides:
+The public Streamlit version provides:
 
 - publication browsing;
-- structured publication metadata;
 - semantic search;
-- source passages and page references.
+- transparent source passages.
 
-This mode is designed for deployment on Streamlit Community Cloud.
+No paid AI API is required.
 
-### Full local mode
+### Local Version
 
-When a local Ollama server is detected, the app additionally enables:
+When Ollama is running locally, the application additionally enables:
 
-- AI-generated paper summaries;
-- comparisons between selected papers;
-- grounded generation using retrieved paper passages.
-
-The local version uses `qwen2.5:7b` and does not require a paid API.
+- AI-generated summaries;
+- paper comparisons;
+- Retrieval-Augmented Generation using Qwen 2.5.
 
 ---
 
 ## Architecture
 
-### Shared document pipeline
+### Shared Retrieval Pipeline
 
 ```text
 PDF publications
         │
         ▼
-PyMuPDF text extraction
+PyMuPDF
         │
         ▼
-Custom text cleaning
+Text cleaning
         │
         ▼
-Overlapping text chunks
+Overlapping chunks
         │
         ▼
-BAAI/bge-small-en-v1.5
+Sentence Transformers
+(BAAI/bge-small-en-v1.5)
         │
         ▼
-Precomputed embedding matrix
+Precomputed embedding index
         │
         ▼
-Cosine-similarity retrieval
+Cosine similarity search
         │
         ▼
 Streamlit interface
 ```
 
-### Optional local generation
+### Local AI Pipeline
 
 ```text
-User selects a paper or comparison
+Retrieved passages
         │
         ▼
-Relevant passages are retrieved
+Qwen 2.5
+via Ollama
         │
         ▼
-Passages + controlled instruction
-        │
-        ▼
-Qwen 2.5 7B through Ollama
-        │
-        ▼
-Grounded summary or comparison
-        │
-        ▼
-Supporting passages and page references
+Grounded summaries
+and comparisons
 ```
-
-The deployment version uses a precomputed NumPy index rather than requiring a running vector-database service.
 
 ---
 
 ## Technology Stack
 
-- **Python**
-- **PyMuPDF** — PDF text extraction
-- **Sentence Transformers**
-- **BAAI/bge-small-en-v1.5** — local embedding model
-- **NumPy** — precomputed embedding matrix and cosine-similarity retrieval
-- **Streamlit** — interactive application
-- **Ollama** — local LLM runtime
-- **Qwen 2.5 7B** — local summaries and comparisons
-- **ChromaDB** — used during earlier development and retained for experimental retrieval workflows
+- Python
+- Streamlit
+- PyMuPDF
+- Sentence Transformers
+- BAAI/bge-small-en-v1.5
+- NumPy
+- Ollama
+- Qwen 2.5
+- ChromaDB (development version)
 
 No paid AI service is required.
 
@@ -206,51 +183,39 @@ research-copilot/
 ├── data/
 │   └── publications.json
 ├── papers/
-│   └── publication PDFs
 ├── search_index/
-│   ├── chunks.json
-│   └── embeddings.npy
+│   ├── embeddings.npy
+│   └── chunks.json
 ├── src/
-│   ├── __init__.py
-│   ├── chunking.py
-│   ├── embeddings.py
-│   ├── llm.py
-│   ├── metadata.py
-│   ├── pdf_loader.py
-│   ├── text_cleaner.py
-│   └── vector_store.py
 ├── tests/
 ├── app.py
 ├── build_search_index.py
 ├── streamlit_app.py
 ├── requirements.txt
-├── .gitignore
-└── README.md
+├── README.md
+└── .gitignore
 ```
 
 ---
 
 ## Installation
 
-### 1. Clone the repository
+Clone the repository:
 
-```powershell
+```bash
 git clone https://github.com/FJPet/research-copilot.git
 cd research-copilot
 ```
 
-### 2. Create a virtual environment
+Create a virtual environment:
 
-On Windows PowerShell:
-
-```powershell
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 ```
 
-### 3. Install the dependencies
+Install the dependencies:
 
-```powershell
+```bash
 pip install -r requirements.txt
 ```
 
@@ -258,13 +223,11 @@ pip install -r requirements.txt
 
 ## Build the Search Index
 
-The repository can include a precomputed search index for deployment. To rebuild it after changing the PDFs, preprocessing, or embedding model, run:
-
-```powershell
+```bash
 python build_search_index.py
 ```
 
-This creates:
+This generates:
 
 ```text
 search_index/
@@ -272,183 +235,89 @@ search_index/
 └── chunks.json
 ```
 
-The embedding matrix contains normalized vectors for the paper chunks. At query time, the application embeds the search query and ranks the stored chunks using cosine similarity.
-
 ---
 
-## Run in Public Demo Mode
+## Run the Application
 
-Ollama is not required for publication browsing and semantic search.
+Public mode:
 
-Run:
-
-```powershell
+```bash
 streamlit run streamlit_app.py
 ```
 
-The application will normally open at:
+Enable the local AI features:
 
-```text
-http://localhost:8501
-```
-
-When Ollama is not detected, the summary and comparison tabs explain that these features are available only in full local mode.
-
----
-
-## Enable Full Local Mode
-
-### 1. Install Ollama
-
-Install Ollama for your operating system.
-
-### 2. Download Qwen
-
-```powershell
+```bash
 ollama pull qwen2.5:7b
-```
-
-### 3. Start the Ollama server
-
-```powershell
 ollama serve
 ```
 
-Leave this terminal open.
+Then start the application:
 
-### 4. Start the application
-
-In another terminal:
-
-```powershell
+```bash
 streamlit run streamlit_app.py
 ```
 
-The app detects the Ollama server at:
-
-```text
-http://localhost:11434
-```
-
-When detected, paper summaries and comparison features are enabled automatically.
-
 ---
 
-## Deploy on Streamlit Community Cloud
+## Example Queries
 
-Use the following deployment configuration:
-
-```text
-Repository: FJPet/research-copilot
-Branch: main
-Main file path: streamlit_app.py
-```
-
-The deployed application automatically runs in public demo mode because a local Ollama server is not available on Streamlit Community Cloud.
-
-The following files must be committed:
-
-```text
-data/publications.json
-search_index/chunks.json
-search_index/embeddings.npy
-papers/
-```
-
-The `search_index/` directory must therefore **not** be included in `.gitignore`.
-
----
-
-## Example Searches
-
-Try queries such as:
-
-- `transfer entropy`
-- `volatility forecasting`
-- `machine learning`
-- `cryptocurrency price discovery`
-- `zombie firms`
-- `Wikipedia searches and stock returns`
-- `information flows between financial markets`
-- `convolutional neural networks`
-- `implied volatility`
-- `market microstructure`
+- transfer entropy
+- volatility forecasting
+- machine learning
+- cryptocurrency price discovery
+- zombie firms
+- implied volatility
+- market microstructure
+- information flow
+- convolutional neural networks
 
 ---
 
 ## Current Limitations
 
-- Mathematical equations may not always be reconstructed perfectly from PDF text layers.
-- Some special characters can be affected by PDF encoding.
-- Character-based chunking may divide content across section or equation boundaries.
-- Semantic search retrieves relevant passages but does not by itself guarantee a complete corpus-level answer.
-- Compact local language models can misinterpret ambiguous passages.
-- Summary generation can be slow on CPU-only systems.
-- The current version intentionally avoids unrestricted corpus-wide generative chat.
-- Public redistribution of individual PDFs depends on the rights associated with the included manuscript versions.
-
----
-
-## Work in Progress
-
-Planned improvements include:
-
-- intelligent question routing;
-- a structured research knowledge graph;
-- curated method, dataset, and research-area profiles;
-- section-aware and formula-aware chunking;
-- improved distinction between methods used by the authors and methods mentioned in cited literature;
-- faster local summarization;
-- more reliable cross-paper synthesis;
-- automated testing;
-- Docker support;
-- improved visual design and screenshots.
+- Mathematical expressions extracted from PDFs are sometimes imperfect.
+- Character-based chunking can split sections.
+- Local language models occasionally misinterpret ambiguous passages.
+- Summary generation is slower on CPU-only systems.
+- The current version intentionally avoids unrestricted corpus-wide chat.
 
 ---
 
 ## Roadmap
 
 - [x] PDF ingestion
-- [x] Text extraction with PyMuPDF
 - [x] Text cleaning
-- [x] Overlapping chunk generation
-- [x] Local Transformer embeddings
-- [x] Semantic retrieval
-- [x] Structured publication metadata
-- [x] Precomputed deployment index
-- [x] Streamlit interface
-- [x] Local Qwen integration
-- [x] Single-paper summary workflow
-- [x] Two-paper comparison workflow
-- [ ] Public Streamlit deployment
+- [x] Semantic search
+- [x] Structured metadata
+- [x] Local LLM integration
+- [x] Paper summaries
+- [x] Paper comparisons
+- [x] Public Streamlit demo
 - [ ] Research knowledge graph
-- [ ] Intelligent intent routing
-- [ ] Structured method and dataset profiles
-- [ ] Formula-aware document processing
+- [ ] Intelligent question routing
+- [ ] Structured method profiles
+- [ ] Formula-aware processing
 - [ ] Automated tests
-- [ ] Docker configuration
+- [ ] Docker support
 
 ---
 
 ## Why This Project?
 
-This project connects my academic research background with practical AI engineering.
+Research Copilot combines my academic background in econometrics and machine learning with modern AI engineering techniques.
 
-It demonstrates:
+The project demonstrates:
 
-- scientific document ingestion;
-- PDF preprocessing;
-- text chunking;
+- scientific document processing;
 - Transformer embeddings;
-- semantic search;
+- semantic retrieval;
 - Retrieval-Augmented Generation;
 - local language-model deployment;
-- structured metadata;
-- transparent source attribution;
-- Streamlit application development;
-- hybrid public and local application design.
+- interactive application development;
+- transparent evidence-based AI.
 
-It also provides an interactive way to explore my publications without having to read every paper individually.
+It also provides an intuitive way to explore my publication portfolio without reading every paper individually.
 
 ---
 
